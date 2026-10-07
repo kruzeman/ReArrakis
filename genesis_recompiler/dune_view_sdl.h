@@ -160,7 +160,7 @@ static int dune_view_draw(SDLHost *h,CPU *c){
     }else{
         DuneView *d=&h->dune_view;
         dune_view_pointer(h,c);
-        int hide_cursor=d->pointer_valid && !h->dune_mouse.point_world;
+        int hide_cursor=h->stick_cursor_active || (d->pointer_valid && !h->dune_mouse.point_world);
         if(d->cursor_hidden!=hide_cursor)d->frame=UINT64_MAX;
         d->cursor_hidden=hide_cursor;
         if(d->cursor_valid!=h->dune_mouse.point_world || d->cursor_x!=h->dune_mouse.wx || d->cursor_y!=h->dune_mouse.wy)d->frame=UINT64_MAX;

@@ -65,6 +65,27 @@ int main(int argc,char**argv){
 
 
 class SoundTests(SoundFixture):
+    def test_save_state_restores_fm_psg_and_clock_exactly(self):
+        source='#define GENESIS_NO_MAIN\n'+emit(analyze(rom_with('60fe'),[0x200]))+r'''
+#include <assert.h>
+int main(void){
+ CPU c={0};c.rom=rom_data;c.rom_size=sizeof rom_data;c.audio_mode=AUDIO_ON;
+ assert(audio_init(&c,NULL));c.audio.playback=1;psg_write(&c,0x8e);psg_write(&c,15);psg_write(&c,0x90);
+ genesis_ymfm_write(c.audio.fm,0,0x2b);genesis_ymfm_write(c.audio.fm,1,0x80);
+ genesis_ymfm_write(c.audio.fm,0,0x2a);genesis_ymfm_write(c.audio.fm,1,0xc0);
+ c.master_cycles=100000;audio_sync(&c);c.audio.read=c.audio.count=0;
+ assert(state_save(&c,"sound.grs"));
+ c.master_cycles+=200000;audio_sync(&c);
+ int16_t first[2048],second[2048];unsigned n=audio_pop(&c,first,1024);assert(n>0);
+ assert(state_load(&c,"sound.grs"));assert(c.master_cycles==100000);
+ c.master_cycles+=200000;audio_sync(&c);unsigned m=audio_pop(&c,second,1024);
+ assert(m==n && !memcmp(first,second,n*4));assert(audio_finish(&c));return 0;
+}
+'''
+        binary=self.compile_sound(source,sdl=True)
+        result=subprocess.run([str(binary)],cwd=self.root,capture_output=True,text=True,timeout=10)
+        self.assertEqual(result.returncode,0,result.stderr)
+
     def test_psg_frequency_stereo_volume_and_pal_clock(self):
         # N=254. Genesis PSG tone frequency is master_clock/(15*16*2*N).
         body='''

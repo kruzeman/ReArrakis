@@ -631,3 +631,151 @@ F3 показывает множитель (68K: 1/2). На каждый цик�
 Используется масштаб карты в drawable pixels, а не полоса 12 оконных
 пикселей от системного указателя. SDL-регрессия проверяет четыре края,
 масштабы 50/75/100%, остановку внутри окна и при выходе из него.
+
+## 2026-10-07 — SDL2 gamepad and settings
+
+Local branch `feat/dune-gamepad-settings` starts from debug `c7a49c5`, including
+the 2x CPU experiment. Reused RROP's SDL controller input and bitmap font;
+added a small F10/Back menu for layouts and A/B/C/Start assignment. No new
+dependency. Configuration is `gamepad.cfg` in the working directory (the app
+launcher uses Application Support/ReArrakis). Input is cleared across menu,
+focus and disconnect transitions; direct pad input cancels mouse intents.
+
+The initial diagnostic omitted SDL_INIT_VIDEO and reported no devices.
+With video initialized, the user's normal launch recorded `usb gamepad`,
+GUID `0500493cac05000004000000cda56d04`, recognized as an SDL controller,
+with 13 buttons and real down/up events. This confirms SDL delivery, not yet
+correct physical labels or full in-game control. A virtual SDL-controller
+regression check exercises the frontend, remapping and persistence without ROM.
+
+Validation: 292 tests passed (one Linux-only /dev/full check skipped).
+The virtual-controller check passed again after the settings layout changed.
+Native ROM build and ad-hoc app signature verification passed; a headless
+2,000,000-instruction smoke run reached the expected budget without a fault.
+The settings menu includes an SDL-drawn three-button Sega pad, highlighting
+the current assignment. A dummy-renderer screenshot was visually checked.
+Physical gameplay validation remains pending.
+
+The settings illustration now traces the shell and button positions from
+[Evan-Amos's public-domain controller photograph](https://commons.wikimedia.org/wiki/File:Sega-Genesis-3But-Cont.jpg).
+The original aspect ratio and concave grip cutout are retained; menu choices
+sit beside the pad. The photo is a reference only, with no image runtime dependency.
+
+## 2026-10-07 — controller selection and analog cursor
+
+F10 now cycles all recognized pads without unplugging them and remembers the
+selected SDL GUID. If that pad disappears, another connected pad takes over.
+Identical models share a GUID, so restart selects the first matching instance;
+button mappings remain shared. Config versions 1/2 are accepted; version 3
+stores controller preference and Cursor Left/Right/Off (Left by default).
+Analog cursor movement reuses mouse intents, with deadzone, proportional speed,
+window bounds and focus/menu guards. DUNE_STICK_SPEED provides 25–300% sensitivity.
+macOS enumerated Xbox Wireless Controller over Bluetooth (045e:02fd); physical
+in-game validation is pending. Virtual SDL tests exercise two simultaneous
+controllers, selection/persistence, unplug fallback and both cursor sticks.
+
+The final controller drawing uses a consistent front view, checked against
+[this original three-button pad photograph](https://www.gamerlifestore.com/products/sega-genesis-3-button-controller-original).
+The shell, circular D-pad recess, angled action-button recess and Start are
+traced together. Curves render at drawable resolution; no photo is bundled.
+
+Validation also cycles 21 simultaneously attached virtual pads and verifies
+wraparound. The mouse-event fixture initially failed because its minimal host
+excluded the new analog fields; analog servicing now lives in the frontend,
+leaving the existing mouse adapter independent. Both adapter and controller
+checks pass. The desktop pointer hides during stick use and returns on mouse
+movement.
+
+Final validation: 292 tests passed, one Linux-only check skipped. The updated
+21-pad/controller test and four Dune adapter checks passed separately after
+the final cursor-visibility change. Native build and app signature verified.
+
+## 2026-10-07 — recoverable configuration and exclusive controller input
+
+User reported an uncontrolled upper-left cursor and could not find settings.
+Two code-level issues were corrected: disconnect previously selected another
+available device, and remapping events from inactive controllers cleared active
+input. Selection now pins one instance; disconnect requires a manual replacement,
+even for matching GUIDs. Initial off-center analog state cannot drive the game
+until the configured axes return to their calibrated deadzone. The exact cause
+of the user's physical drift remains unverified without live axis readings.
+
+Esc/F1/F10 open settings. Buttons / D-pad supports eight individual assignments,
+an all-controls wizard, clear, duplicate swap, signed axes and triggers. Axes
+settings expose X/Y choice, inversion, deadzone, sensitivity, center calibration
+and RAW/CENTER telemetry. Analog menu navigation is disabled so drift cannot
+change settings. Mouse gameplay can be disabled while settings keep mouse input.
+Config version 4 adds per-GUID profiles, with versions 1–3 accepted and preserved
+for initial migration. Identical GUIDs still share a profile; runtime selection
+uses instance IDs. Shared cursor/digital axes are mutually exclusive.
+
+Implementation references: [SDL axis ranges and deadzones](https://wiki.libsdl.org/SDL2/SDL_GameControllerAxis),
+[SDL instance IDs](https://wiki.libsdl.org/SDL2/SDL_JoystickGetDeviceInstanceID),
+and [RetroArch controller/remap separation](https://docs.libretro.com/guides/input-and-controls/).
+These inform the implementation; RetroArch is not a dependency.
+
+Validation: the complete 292-test run passed with one Linux-only /dev/full
+skip. A final capture regression also passed: a pre-held unrelated button or
+axis no longer prevents binding a fresh control; that held control itself must
+be released before it can be assigned. Both ReArrakis.app and
+ReArrakis-Gamepad.app are rebuilt locally, with previous versions kept in build/.
+Native compilation and ad-hoc signature checks passed. Live physical drift
+verification remains pending.
+
+
+## 2026-10-08: pause menu and save states
+
+- Esc/F10 now opens a game menu; F1 retains direct controller-settings access.
+- Added ten local state slots, occupied/empty status and modification times;
+  load/overwrite/quit have Cancel-focused confirmation. Pause and input handling
+  remain shared with controller settings. Fullscreen, volume and CPU speed are
+  exposed without inventing a second settings backend.
+- Snapshot CPU/devices, scrub host pointers, serialize FM through the existing
+  ymfm API, atomically replace files and validate before committing a load.
+  Reset host audio/input/camera clocks after loading. Deliberate limit: matching
+  ROM/runtime/features/native ABI only; no version migration or WAV-recording
+  snapshots. This is separate from the game's original save mechanism.
+- Menu references: [RetroArch Quick Menu](https://docs.libretro.com/guides/quick-menu/)
+  for pause/resume and grouped state/control actions;
+  [Game Accessibility Guidelines](https://gameaccessibilityguidelines.com/full-list/)
+  for consistent input methods, readable contrast and visible focus. Confirmation
+  and safe default selection are implementation choices for avoiding lost progress.
+- Added SDL round-trip/corrupt-state/confirmation checks, an exact FM+PSG audio
+  continuation test, and optional ROM-backed `tools/test_dune_state.c`.
+- Validation: full suite 294 tests, one platform-specific skip; real-ROM frame
+  5000 -> 5030 replay reproduced RAM, video, PC, master clock and FM state.
+  Main/confirmation menus rendered and inspected with SDL's software renderer.
+  Native app rebuilt; both ReArrakis.app and ReArrakis-Gamepad.app updated and
+  their ad-hoc signatures verified. Physical controller navigation remains a
+  user-side check; the automated menu/input checks use SDL events/virtual pads.
+
+## 2026-10-08: pre-push audit of the gamepad/menu series
+
+Reviewed the five commits from c7a49c5 through 7e5c26e, including input lifecycle,
+profile parsing/persistence, menu actions, state loading, artwork bounds and the
+publication file list. Found and corrected:
+
+- P2: ignored physical mouse motion still reset the analog cursor owner. Gate
+  that reset with the gameplay-mouse setting; virtual-pad regression verifies
+  that disabled mouse input leaves the stick cursor and its coordinates intact.
+- P2: C `rename` cannot replace existing files on Windows, affecting both
+  profiles and save slots. Share a host-file replacement helper using
+  MoveFileExA(REPLACE_EXISTING | WRITE_THROUGH) on Windows and rename elsewhere;
+  never delete the previous file first. Added overwrite and failed-replacement
+  coverage. References: [Microsoft CRT rename](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/rename-wrename?view=msvc-170)
+  and [MoveFileExA](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexa).
+- P2: state compatibility included the FM wrapper but omitted its vendored ymfm
+  implementation. Hash the sorted backend headers/sources as well. A regression
+  changes a backend source and verifies that the compatibility key changes.
+
+ROM/extracted art/generated translations/binaries are absent from the series;
+commit messages contain no agent attribution. Remaining limits: same-runtime/ABI
+local snapshots, per-model controller profiles (identical models share settings),
+and physical-controller navigation still needs user verification. Windows native
+execution was not available on this Mac; the Windows API path was reviewed against
+its platform documentation. Existing Mac/Linux replacement semantics are retained.
+
+Validation after fixes: 295 tests, one platform-specific skip; ROM-backed
+5000 -> 5030 state replay still matched RAM/video/PC/clocks/FM. Rebuilt both
+local macOS apps and verified their ad-hoc signatures. The audit changes the
+runtime fingerprint, so states from the pre-audit app require that older app.

@@ -128,3 +128,37 @@ Edge scrolling follows the visible game cursor bounds instead of a fixed
 use the same world scale as rendering, including drawable-pixel scaling.
 The ROM-free SDL regression covers all four edges at 50%, 75% and 100% zoom,
 stopping in the interior and cancelling on window leave.
+
+## SDL gamepad settings (debug-derived branch)
+
+Esc/F10 open the pause menu; F1 opens controller settings; keyboard and mouse remain available
+regardless of controller bindings. One selected instance supplies game input.
+Other devices and their remapping events are ignored. Disconnecting it stops
+pad input until the user chooses another device, including with identical models.
+
+Buttons and D-pad directions can be assigned individually or in an eight-step
+wizard, including signed axes and triggers. Separate model profiles store
+bindings, cursor/digital modes, mouse enable, custom axes, inversion, deadzone,
+sensitivity and calibrated centers. Live axis values make drift diagnosable.
+Analog input must return to its calibrated center after device selection.
+Models sharing an SDL GUID share a profile; active instances remain isolated.
+
+The settings drawing uses a consistent front-view reference of an original
+three-button Sega controller. Rendering has no image-library dependency.
+Virtual tests cover 21 controllers, inactive-device isolation, disconnect,
+manual direction assignment, per-model profiles, calibration and malformed
+configuration. Physical Xbox Bluetooth gameplay and the reported cursor drift
+still need verification on the user's running app.
+
+
+### Pause menu and runtime snapshots
+
+The SDL pause menu provides resume, ten save-state slots, controller settings,
+fullscreen, volume, debug CPU speed and confirmed quit. Save/load captures the
+CPU/device state and uses ymfm's existing FM serialization. Writes use temporary
+files plus atomic replacement; reads validate compatibility, lengths, checksums
+and selected state bounds before replacing the live machine. Overwrite/load/quit
+confirmation starts on Cancel. Slots show presence and modification time.
+Snapshots are restricted to a matching ROM/runtime fingerprint/features/ABI;
+there is no cross-version migration or thumbnail browser. WAV recording excludes
+save/load. Window close remains the standard immediate close operation.

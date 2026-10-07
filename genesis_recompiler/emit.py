@@ -225,7 +225,7 @@ def emit(program: Program, z80: ZProgram | None = None, cartridge: str = "plain"
     if cartridge not in ("plain", "ea-24c01"):
         raise ValueError("unsupported cartridge profile")
     runtime = files("genesis_recompiler").joinpath("runtime.h").read_text()
-    for header in ("vdp_state.h", "vdp.h", "z80_bus_state.h", "z80_bus.h", "z80_cpu_state.h", "z80_runtime.h", "psg_state.h", "psg.h", "eeprom_state.h", "eeprom.h", "vdp_timing.h", "vdp_render.h", "scheduler.h", "audio_state.h", "audio_backend.h", "audio_stub_state.h", "audio_stub.h", "audio.h", "controller.h", "sdl_frontend.h", "dune_mouse.h", "dune_mouse_sdl.h", "dune_audio.h", "dune_view.h", "dune_view_sdl.h", "dune_cpu_sdl.h", ):
+    for header in ("vdp_state.h", "vdp.h", "z80_bus_state.h", "z80_bus.h", "z80_cpu_state.h", "z80_runtime.h", "psg_state.h", "psg.h", "eeprom_state.h", "eeprom.h", "vdp_timing.h", "vdp_render.h", "scheduler.h", "audio_state.h", "audio_backend.h", "audio_stub_state.h", "audio_stub.h", "audio.h", "controller.h", "sdl_frontend.h", "gamepad_sdl.h", "dune_controls_sdl.h", "save_state.h", "host_file.h", "dune_mouse.h", "dune_mouse_sdl.h", "dune_audio.h", "dune_view.h", "dune_view_sdl.h", "dune_cpu_sdl.h", ):
         runtime = runtime.replace(f'#include "{header}"', files("genesis_recompiler").joinpath(header).read_text())
     data = resources.code if resources else program.rom
     rom_rows = ["    " + ",".join(f"0x{b:02x}" for b in data[start:start+16]) + "," for start in range(0, len(data), 16)]
@@ -234,6 +234,12 @@ def emit(program: Program, z80: ZProgram | None = None, cartridge: str = "plain"
         lines += ["#define GENESIS_DUNE_MOUSE", '#define GENESIS_WINDOW_TITLE "ReArrakis — Dune: The Battle for Arrakis"']
     if resources:
         lines += ["#ifndef _POSIX_C_SOURCE", "#define _POSIX_C_SOURCE 200809L", "#endif", "#define GENESIS_EXTERNAL_RESOURCES"]
+    fingerprint = hashlib.sha256(runtime.encode())
+    fingerprint.update(files("genesis_recompiler").joinpath("audio_ymfm.cpp").read_bytes())
+    for source in sorted(files("genesis_recompiler").joinpath("ymfm").iterdir(), key=lambda p: p.name):
+        if source.is_file() and source.name.endswith((".h", ".cpp")):
+            fingerprint.update(source.name.encode() + b"\0" + source.read_bytes())
+    lines += [f'#define GENESIS_STATE_RUNTIME "{fingerprint.hexdigest()}"']
     lines += [runtime, f"static const uint8_t {'rom_code' if resources else 'rom_data'}[] = {{", *rom_rows, "};"]
     if resources:
         lines += [files("genesis_recompiler").joinpath("resources.h").read_text(), "static const ResourceSpan rom_code_spans[] = {"]

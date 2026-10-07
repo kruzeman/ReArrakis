@@ -28,7 +28,7 @@ class SDLTests(CompiledTestCase):
 
     def run_sdl(self, binary, args=()):
         environment = dict(os.environ, SDL_VIDEODRIVER='dummy', SDL_RENDER_DRIVER='software')
-        return subprocess.run([str(binary), *args], env=environment, capture_output=True, text=True, timeout=10)
+        return subprocess.run([str(binary), *args], env=environment, capture_output=True, text=True, timeout=10, cwd=self.root)
 
     def check(self, body):
         program = analyze(rom_with('4e72 2700'), [0x200])
@@ -67,14 +67,51 @@ assert(SDL_PushEvent(&e)==1); assert(sdl_host_service(&h,&c));
 assert(!c.pad_buttons[0] && !h.fast_forward);
 ''')
 
-    def test_pause_ignores_repeat_rebases_clock_and_escape_quits(self):
+    def test_pause_rebases_clock_and_escape_opens_recoverable_settings(self):
         self.check('''
 c.master_cycles=53693175;
 key(SDL_KEYDOWN,SDLK_SPACE,0); assert(sdl_host_service(&h,&c)); assert(h.paused);
 assert(h.origin_master==c.master_cycles);
 key(SDL_KEYDOWN,SDLK_SPACE,1); assert(sdl_host_service(&h,&c)); assert(h.paused);
 key(SDL_KEYDOWN,SDLK_SPACE,0); assert(sdl_host_service(&h,&c)); assert(!h.paused);
-key(SDL_KEYDOWN,SDLK_ESCAPE,0); assert(!sdl_host_service(&h,&c));
+key(SDL_KEYDOWN,SDLK_ESCAPE,0); assert(sdl_host_service(&h,&c)); assert(h.controls.menu && h.paused);
+key(SDL_KEYDOWN,SDLK_ESCAPE,0); assert(sdl_host_service(&h,&c)); assert(!h.controls.menu && !h.paused);
+key(SDL_KEYDOWN,SDLK_F1,0); assert(sdl_host_service(&h,&c)); assert(h.controls.menu);
+key(SDL_KEYDOWN,SDLK_ESCAPE,0); assert(sdl_host_service(&h,&c)); assert(h.controls.page==3);
+h.controls.selected=8; key(SDL_KEYDOWN,SDLK_RETURN,0);assert(sdl_host_service(&h,&c));
+assert(h.controls.page==4 && h.controls.selected==0);
+h.controls.selected=1;key(SDL_KEYDOWN,SDLK_RETURN,0);
+if(sdl_host_service(&h,&c))assert(!sdl_host_service(&h,&c));
+''')
+
+    def test_menu_states_round_trip_confirm_and_reject_corruption(self):
+        self.check(r'''
+key(SDL_KEYDOWN,SDLK_ESCAPE,0);assert(sdl_host_service(&h,&c));assert(h.controls.page==3);
+c.ram[100]=42;c.d[0]=123;c.master_cycles=1000;c.vdp.vram[9]=87;c.z80_cpu.pc=17;
+h.controls.selected=2;key(SDL_KEYDOWN,SDLK_RETURN,0);assert(sdl_host_service(&h,&c));
+assert(dune_menu_exists(&h) && strstr(h.controls.message,"saved"));
+c.ram[100]=99;c.d[0]=999;
+key(SDL_KEYDOWN,SDLK_RETURN,0);assert(sdl_host_service(&h,&c));assert(h.controls.page==4 && h.controls.selected==0);
+key(SDL_KEYDOWN,SDLK_RETURN,0);assert(sdl_host_service(&h,&c));assert(h.controls.page==3);
+h.controls.selected=3;key(SDL_KEYDOWN,SDLK_RETURN,0);assert(sdl_host_service(&h,&c));
+assert(h.controls.page==4 && h.controls.selected==0);
+key(SDL_KEYDOWN,SDLK_RIGHT,0);assert(sdl_host_service(&h,&c));assert(h.controls.page==4 && c.d[0]==999);
+key(SDL_KEYDOWN,SDLK_DOWN,0);key(SDL_KEYDOWN,SDLK_RETURN,0);assert(sdl_host_service(&h,&c));
+assert(c.ram[100]==42 && c.d[0]==123 && c.master_cycles==1000 && c.vdp.vram[9]==87 && c.z80_cpu.pc==17);
+assert(h.paused && h.controls.page==3 && h.origin_master==1000);
+FILE *f=fopen("state-01.grs","r+b");assert(f);assert(!fseek(f,sizeof(StateHeader)+offsetof(CPU,ram)+100,SEEK_SET));
+fputc(0,f);fclose(f);c.d[0]=555;assert(!state_load(&c,"state-01.grs") && c.d[0]==555);
+assert(!state_load(&c,"missing.grs") && c.d[0]==555);
+assert(!state_save(&c,"missing-directory/state.grs"));
+assert(state_save(&c,"state-01.grs"));c.d[0]=777;
+assert(state_save(&c,"state-01.grs"));c.d[0]=0;
+assert(state_load(&c,"state-01.grs") && c.d[0]==777);
+/* A failed replacement must leave the previous file intact. */
+assert(!host_file_replace("no-such-temp.grs","state-01.grs"));
+c.d[0]=0;assert(state_load(&c,"state-01.grs") && c.d[0]==777);
+h.controls.slot=1;h.controls.selected=3;key(SDL_KEYDOWN,SDLK_RETURN,0);assert(sdl_host_service(&h,&c));
+assert(h.controls.page==3 && strstr(h.controls.message,"empty"));
+h.controls.selected=0;key(SDL_KEYDOWN,SDLK_RETURN,0);assert(sdl_host_service(&h,&c));assert(!h.paused && !h.controls.menu);
 ''')
 
     def test_rgb_texture_resolution_changes_and_redraw(self):
@@ -111,9 +148,9 @@ assert(SDL_PushEvent(&e)==1); assert(sdl_host_service(&h,&c)); assert(h.last_fra
         self.assertIn('status=halted steps=18', halted.stdout)
         # With --headless even a window-enabled binary needs no display server.
         environment = dict(os.environ, SDL_VIDEODRIVER='nonexistent-video-driver')
-        headless = subprocess.run([str(binary), '--headless'], env=environment, capture_output=True, text=True, timeout=10)
+        headless = subprocess.run([str(binary), '--headless'], env=environment, capture_output=True, text=True, timeout=10, cwd=self.root)
         self.assertEqual(headless.returncode, 0, headless.stderr)
-        bad_video = subprocess.run([str(binary), '--window'], env=environment, capture_output=True, text=True, timeout=10)
+        bad_video = subprocess.run([str(binary), '--window'], env=environment, capture_output=True, text=True, timeout=10, cwd=self.root)
         self.assertEqual(bad_video.returncode, 1)
         self.assertIn('SDL2 initialization failed', bad_video.stderr)
 

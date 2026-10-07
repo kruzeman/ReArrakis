@@ -98,11 +98,56 @@ aside first, or select a new path with `--output '/path/to/ReArrakis.app'`.
 | Enter | Start |
 | Space | Pause the runtime |
 | Tab held | Fast-forward |
-| Esc | Quit |
+| Esc / F10 | Pause menu |
+| F1 | Controller settings |
 
 Mouse navigation also works in supported native menus. Original code still applies pricing, construction, selection and movement rules.
 
 The map adapts to the window; HUD elements remain separate. Title screens and menus retain their original proportions. Expanded rendering is bounded to 1024 × 768 source pixels, so extreme aspect ratios may limit effective zoom. Minimap navigation is a recent addition requiring manual gameplay verification.
+
+## Gamepad settings
+
+Press **F1** for controller settings, or **Esc / F10** for the pause menu
+and choose **Controller settings**. Fn may be needed on Mac. An unassigned
+controller Back/Select button also opens the pause menu. Escape returns one
+level; choose
+**Quit game** in the pause menu to exit (confirmation required).
+
+- **Pad** selects one SDL-recognized controller by name and number. All others
+  are ignored, including their axes and remapping events. Unplugging the selected
+  pad stops controller input; choose a replacement explicitly. It never takes
+  over automatically. There is no two-controller limit.
+- **Input** disables all gameplay input from the pad, while keyboard and mouse
+  remain available to recover a bad mapping.
+- **Cursor** selects Left, Right or Off; **Axes / Deadzone** can assign custom X/Y
+  axes. Analog speed depends on deflection. **Digital** optionally maps a stick
+  to native directions; it defaults to Off and cannot use the cursor's axes at
+  the same time. **Mouse** separately disables mouse gameplay input and edge
+  scrolling; mouse clicks still work in settings.
+- **Buttons / D-pad** assigns A, B, C, Start, Up, Down, Left and Right individually
+  or with **Assign all eight**. Press Enter/click a row, then press the desired
+  button, D-pad direction, trigger or axis direction. Release between presses.
+  Escape cancels; Delete/Backspace clears a binding. Assigning an already-used
+  control to a single action swaps the two bindings. Menu navigation stays
+  independent of gameplay bindings, so it remains usable after remapping.
+- **Axes / Deadzone** sets X/Y axes, inversion, deadzone (5–60%) and speed
+  (25–300%). Release sticks/triggers and click **Calibrate** to save their current
+  centers. RAW and CENTER values show what the selected pad reports. Reset axes
+  restores zero centers, 30% deadzone and 100% speed. Sticks must return to their
+  calibrated deadzone before newly selected controller input is armed.
+
+D-pad and face buttons navigate settings; analog sticks do not, so a drifting
+stick cannot change settings. Keyboard arrows, Enter and mouse are always usable.
+Back/Select opens settings only when it has no gameplay binding. OS-reserved
+buttons such as Guide may also activate system features.
+
+Default Genesis A/B/C/Start use SDL X/A/B/Start. Configuration is saved after
+changes to `gamepad.cfg` (selected device) and `gamepad-<SDL GUID>.cfg` (model
+profile). The macOS app stores them in `~/Library/Application Support/ReArrakis/`;
+command-line launches use the working directory. Older config versions migrate
+on the next save. Identical models with the same GUID share a saved profile;
+live input is still isolated by instance ID. Optional `gamecontrollerdb.txt`
+mappings are loaded from that directory for devices SDL does not recognize.
 
 ## Sound
 
@@ -169,3 +214,32 @@ left half cycles backwards and the right half forwards. Click keyboard
 letters, `<`/`>` and `!` using their original behavior. Right click closes
 options/password entry; in the options confirmation dialog, left click
 accepts and right click declines. Settings are changed by native handlers.
+
+
+### Pause menu and save states
+
+**Esc / F10** opens the pause menu; **Resume game** continues immediately.
+Escape/B backs out one level, then returns to the previous pause state.
+Use arrows or the selected gamepad's D-pad to navigate, Enter/A to select,
+or click a row. Left/right adjusts the selected slot, volume or CPU speed;
+left/right never confirms loading, overwriting or quitting.
+
+Choose one of **10 state slots**, then **Save state** or **Load state**.
+The menu displays whether a slot exists and its last modification time.
+Overwrite, load and quit prompts select **Cancel** by default. Loading an empty
+slot does nothing. A successful load stays paused until you resume.
+The menu also exposes fullscreen, playback volume and the debug CPU speed
+(1x original or 2x). Controller remapping remains in its own submenu.
+
+Files are `state-01.grs` through `state-10.grs` in the working directory.
+The macOS app stores them in `~/Library/Application Support/ReArrakis/`.
+They survive restarting the app and include 68000/Z80, RAM, video, PSG and FM
+state. Host input and queued playback audio are cleared when loading.
+
+States are local runtime/ABI snapshots, **not portable emulator saves**:
+the loader requires the same ROM, runtime fingerprint, build features and ABI.
+A changed runtime build can reject older states; keep the matching app if you
+need to keep using them. Checksums detect accidental damage. A rejected load
+leaves the running machine untouched, and a failed save does not replace an
+existing slot. States cannot be saved/loaded while recording a WAV file.
+Volume, fullscreen and the selected slot are session settings.

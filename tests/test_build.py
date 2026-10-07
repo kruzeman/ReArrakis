@@ -7,6 +7,9 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+from genesis_recompiler.decode import analyze
+from genesis_recompiler.emit import emit
 from examples.make_demo import make_demo
 from genesis_recompiler.cli import main
 
@@ -25,6 +28,18 @@ class BuildTests(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as stderr:
             status = main([str(self.rom), "--build", "-o", str(self.output), *options])
         return status, stderr.getvalue()
+
+    def test_state_fingerprint_tracks_vendored_sound_sources(self):
+        package = self.root / "runtime"
+        shutil.copytree(Path(__file__).resolve().parents[1] / "genesis_recompiler", package,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        program = analyze(make_demo(), [0x200])
+        with patch("genesis_recompiler.emit.files", return_value=package):
+            before = emit(program).split('#define GENESIS_STATE_RUNTIME ', 1)[1].splitlines()[0]
+            source = package / "ymfm" / "ymfm_opn.cpp"
+            source.write_text(source.read_text() + "\n// changed backend revision\n")
+            after = emit(program).split('#define GENESIS_STATE_RUNTIME ', 1)[1].splitlines()[0]
+        self.assertNotEqual(before, after)
 
     def test_build_standalone_binary_and_retain_artifacts(self):
         source = self.root / "sources" / "demo.c"
